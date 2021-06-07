@@ -6,6 +6,8 @@
 , srcOnly
 , autoPatchelfHook
 , alsaLib
+, dbus
+, expat
 , fontconfig
 , freetype
 , gperftools
@@ -25,13 +27,25 @@
 , libunwind
 , libuuid
 , libxkbcommon
-, sqlite
+, ncurses5
 , nss
 , nspr
+, sqlite
+, qtbase
+, qtimageformats
+, qtsvg
+, qtwayland
+, qtwebengine
 , vulkan-loader
+, wrapQtAppsHook
 , zlib
 }:
 let
+  ldLibraryPath = lib.makeLibraryPath [
+    libudev0-shim
+    vulkan-loader
+  ];
+
   systemLibs = [
     "libc++.so"
     "libc++.so.1"
@@ -49,60 +63,60 @@ let
   ];
 
 in
-mkGeneric (lib.optionalAttrs stdenv.isLinux
-  {
-    nativeBuildInputs = [
-      autoPatchelfHook
-      makeWrapper
-    ];
+mkGeneric (lib.optionalAttrs stdenv.isLinux {
+  nativeBuildInputs = [
+    autoPatchelfHook
+    makeWrapper
+    wrapQtAppsHook
+  ];
 
-    buildInputs = [
-      alsaLib
-      fontconfig
-      freetype
-      gperftools
-      libGL
-      libX11
-      libXcomposite
-      libXcursor
-      libXdamage
-      libXext
-      libXfixes
-      libXi
-      libXrender
-      libXtst
-      libcxx
-      libpulseaudio
-      libxkbcommon
-      libudev0-shim
-      libunwind
-      libuuid
-      nss
-      nspr
-      sqlite
-      vulkan-loader
-      zlib
-    ];
+  buildInputs = [
+    alsaLib
+    dbus.lib
+    expat
+    libX11
+    libXcomposite
+    libXcursor
+    libXdamage
+    libXext
+    libXfixes
+    libXi
+    libXrender
+    libXtst
+    libcxx
+    libpulseaudio
+    libuuid
+    libunwind
+    libxkbcommon
+    ncurses5
+    nss
+    nspr
+    qtbase
+    qtimageformats
+    qtsvg
+    qtwayland
+    qtwebengine
+    vulkan-loader
+    zlib
+  ];
 
-    dontWrapQtApps = true;
+  dontStrip = true;
+  dontPatchELF = true;
+  dontMoveLib64 = true;
+  dontWrapQtApps = true;
 
-    postUnpack = ''
-      rm -r $out/lib64/gles_mesa
+  qtWrapperArgs = [
+    ''--set ANDROID_QT_QPA_PLATFORM_PLUGIN_PATH ${qtbase}/lib/qt-${qtbase.qtCompatVersion}/plugins/platforms''
+  ];
 
-      for f in ${toString systemLibs}; do
-        rm $out/lib64/$f || true
-      done
+  postUnpack = ''
+    addAutoPatchelfSearchPath "$out/lib64"
+  '';
 
-      # silence LD_PRELOAD warning
-      ln -s ${freetype}/lib/libfreetype.so.6 $out/lib64/qt/lib
-
-      # Force XCB platform plugin as Wayland isn't supported.
-      # Inject libudev0-shim to fix udev_loader error.
-      wrapProgram $out/emulator \
-        --set QT_QPA_PLATFORM xcb \
-        --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ libudev0-shim ]}
-    '';
-  } // {
+  postFixup = ''
+    wrapQtApp "$out/emulator"
+  '';
+} // {
   passthru.installSdk = ''
     for exe in emulator emulator-check mksdcard; do
       ln -s $pkgBase/$exe $out/bin/$exe
